@@ -82,15 +82,83 @@ def init_db():
             created_at TEXT
         )
     """)
+    cursor.execute("PRAGMA table_info(jobs)")
+    existing_columns = {row[1] for row in cursor.fetchall()}
+    meta_columns = {
+        "router_events": "TEXT",
+        "privacy_metrics": "TEXT",
+        "model_summary": "TEXT",
+        "report_model": "TEXT",
+        "report_fallback_used": "INTEGER DEFAULT 0",
+    }
+    for column, column_type in meta_columns.items():
+        if column not in existing_columns:
+            cursor.execute(f"ALTER TABLE jobs ADD COLUMN {column} {column_type}")
     conn.commit()
     conn.close()
+
+def summarize_job_metadata(results: list, total: int = 0) -> dict:
+    total_redactions = sum(int(r.get("pii_redaction_count", 0) or 0) for r in results)
+    theme_fallback_count = sum(1 for r in results if r.get("theme_fallback_used"))
+    validation_fallback_count = sum(1 for r in results if r.get("validation_fallback_used"))
+    return {
+        "privacy_metrics": {
+            "total_redactions": total_redactions,
+            "segments_with_redactions": sum(1 for r in results if int(r.get("pii_redaction_count", 0) or 0) > 0),
+            "total_segments": total or len(results),
+        },
+        "model_summary": {
+            "theme_models": sorted({r.get("theme_model") for r in results if r.get("theme_model")}),
+            "validation_models": sorted({r.get("validation_model") for r in results if r.get("validation_model")}),
+            "theme_fallback_count": theme_fallback_count,
+            "validation_fallback_count": validation_fallback_count,
+            "fallback_count": theme_fallback_count + validation_fallback_count,
+        },
+    }
+
+def reconstruct_router_events(logs: list) -> list:
+    events = []
+    for entry in logs or []:
+        message = str(entry.get("message", ""))
+        attempt = re.search(r"Model havuzu denemesi \(([^)]+)\) \d+/\d+: (.+)$", message)
+        success = re.search(r"Model havuzu basarili \(([^)]+)\): (.+)$", message)
+        if attempt:
+            events.append({
+                "time": entry.get("time", ""),
+                "task": attempt.group(1),
+                "model": attempt.group(2),
+                "status": "attempt",
+                "message": message,
+            })
+        elif success:
+            events.append({
+                "time": entry.get("time", ""),
+                "task": success.group(1),
+                "model": success.group(2),
+                "status": "success",
+                "message": message,
+            })
+        elif "API havuzu kullanilamadi" in message or "demo-safe" in message.lower():
+            task = "reduction" if entry.get("agent") == "agent_d" else "unknown"
+            events.append({
+                "time": entry.get("time", ""),
+                "task": task,
+                "model": "demo-safe/local-fallback",
+                "status": "fallback_success",
+                "message": message,
+            })
+    return events
 
 def save_job_to_db(job_id: str, job_data: dict):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO jobs (job_id, filename, status, progress, processed, total, error, report, results, logs, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO jobs (
+            job_id, filename, status, progress, processed, total, error, report,
+            results, logs, created_at, router_events, privacy_metrics,
+            model_summary, report_model, report_fallback_used
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(job_id) DO UPDATE SET
             filename=excluded.filename,
             status=excluded.status,
@@ -100,7 +168,12 @@ def save_job_to_db(job_id: str, job_data: dict):
             error=excluded.error,
             report=excluded.report,
             results=excluded.results,
-            logs=excluded.logs
+            logs=excluded.logs,
+            router_events=excluded.router_events,
+            privacy_metrics=excluded.privacy_metrics,
+            model_summary=excluded.model_summary,
+            report_model=excluded.report_model,
+            report_fallback_used=excluded.report_fallback_used
     """, (
         job_id,
         job_data.get("filename", ""),
@@ -112,7 +185,12 @@ def save_job_to_db(job_id: str, job_data: dict):
         job_data.get("report", ""),
         json.dumps(job_data.get("results", [])),
         json.dumps(job_data.get("logs", [])),
-        job_data.get("created_at", "")
+        job_data.get("created_at", ""),
+        json.dumps(job_data.get("router_events", [])),
+        json.dumps(job_data.get("privacy_metrics", {})),
+        json.dumps(job_data.get("model_summary", {})),
+        job_data.get("report_model", ""),
+        1 if job_data.get("report_fallback_used", False) else 0,
     ))
     conn.commit()
     conn.close()
@@ -126,10 +204,22 @@ def load_jobs_from_db():
         init_db()
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        cursor.execute("SELECT job_id, filename, status, progress, processed, total, error, report, results, logs, created_at FROM jobs")
+        cursor.execute("""
+            SELECT job_id, filename, status, progress, processed, total, error,
+                   report, results, logs, created_at, router_events,
+                   privacy_metrics, model_summary, report_model,
+                   report_fallback_used
+            FROM jobs
+        """)
         rows = cursor.fetchall()
         conn.close()
         for row in rows:
+            results = json.loads(row[8]) if row[8] else []
+            logs = json.loads(row[9]) if row[9] else []
+            derived = summarize_job_metadata(results, row[5] or 0)
+            router_events = json.loads(row[11]) if len(row) > 11 and row[11] else reconstruct_router_events(logs)
+            privacy_metrics = json.loads(row[12]) if len(row) > 12 and row[12] else derived["privacy_metrics"]
+            model_summary = json.loads(row[13]) if len(row) > 13 and row[13] else derived["model_summary"]
             jobs[row[0]] = {
                 "status": row[2],
                 "progress": row[3],
@@ -137,16 +227,16 @@ def load_jobs_from_db():
                 "total": row[5],
                 "error": row[6],
                 "report": row[7],
-                "results": json.loads(row[8]) if row[8] else [],
-                "logs": json.loads(row[9]) if row[9] else [],
+                "results": results,
+                "logs": logs,
                 "filename": row[1] if row[1] else "",
                 "created_at": row[10] if row[10] else "",
                 "output_path": f"outputs/{row[0]}_output.xlsx",
-                "router_events": [],
-                "privacy_metrics": {"total_redactions": 0, "segments_with_redactions": 0, "total_segments": row[5] or 0},
-                "model_summary": {},
-                "report_model": "",
-                "report_fallback_used": False,
+                "router_events": router_events,
+                "privacy_metrics": privacy_metrics,
+                "model_summary": model_summary,
+                "report_model": row[14] if len(row) > 14 and row[14] else "",
+                "report_fallback_used": bool(row[15]) if len(row) > 15 else False,
             }
         logger.info(f"Veritabani yuklendi. {len(rows)} eski analiz yuklendi.")
     except Exception as e:
