@@ -1,0 +1,1467 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Med-AgentLab: Çoklu Ajan Nitel Veri Analiz Laboratuvarı</title>
+  <meta name="description" content="Yerel Ollama gizlilik katmanı ve kota-duyarlı model havuzları ile asenkron MapReduce klinik nitel analiz sistemi." />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    :root {
+      --bg-gradient: radial-gradient(circle at top right, #18153c, #0a071d, #03010b);
+      --card-bg: rgba(17, 12, 40, 0.55);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --primary: #6366f1;
+      --primary-hover: #4f46e5;
+      --primary-glow: rgba(99, 102, 241, 0.3);
+      --success: #10b981;
+      --success-glow: rgba(16, 185, 129, 0.2);
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --text-main: #f3f4f6;
+      --text-muted: #9ca3af;
+      --font-heading: 'Outfit', sans-serif;
+      --font-body: 'Inter', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font-body);
+      background: var(--bg-gradient);
+      background-attachment: fixed;
+      color: var(--text-main);
+      min-height: 100vh;
+      padding: 40px 24px;
+      overflow-x: hidden;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .top-section {
+      display: grid;
+      grid-template-columns: 2.2fr 1fr;
+      gap: 24px;
+      margin-bottom: 28px;
+      align-items: stretch;
+    }
+    @media (max-width: 1024px) {
+      .top-section {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .history-item {
+      padding: 12px 16px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.3s;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .history-item:hover {
+      background: rgba(99, 102, 241, 0.1);
+      border-color: var(--primary);
+    }
+    .history-item-title {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #e0e7ff;
+      word-break: break-all;
+    }
+    .history-item-meta {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      display: flex;
+      justify-content: space-between;
+    }
+
+    /* ── Header ── */
+    header {
+      text-align: center;
+      margin-bottom: 48px;
+      position: relative;
+    }
+
+    .header-logo {
+      font-size: 2.8rem;
+      font-weight: 800;
+      font-family: var(--font-heading);
+      background: linear-gradient(135deg, #a5b4fc, #6366f1, #d946ef);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 8px;
+      letter-spacing: -0.03em;
+    }
+
+    header p {
+      color: var(--text-muted);
+      font-size: 1.1rem;
+      font-weight: 300;
+    }
+
+    .badge-design {
+      background: rgba(99, 102, 241, 0.15);
+      border: 1px solid var(--primary);
+      color: #a5b4fc;
+      padding: 4px 12px;
+      border-radius: 99px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      display: inline-block;
+      margin-top: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--card-bg);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--card-border);
+      border-radius: 20px;
+      padding: 32px;
+      margin-bottom: 28px;
+      box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.5);
+      transition: box-shadow 0.3s ease;
+    }
+
+    .card:hover {
+      box-shadow: 0 16px 48px 0 rgba(99, 102, 241, 0.1);
+    }
+
+    .card-title {
+      font-size: 1.2rem;
+      font-family: var(--font-heading);
+      font-weight: 600;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #e0e7ff;
+    }
+
+    /* ── Upload Zone ── */
+    .upload-zone {
+      border: 2px dashed rgba(255, 255, 255, 0.15);
+      border-radius: 12px;
+      padding: 40px 20px;
+      text-align: center;
+      cursor: pointer;
+      background: rgba(255, 255, 255, 0.02);
+      transition: border-color 0.3s, background-color 0.3s;
+    }
+
+    .upload-zone:hover {
+      border-color: var(--primary);
+      background: rgba(99, 102, 241, 0.04);
+    }
+
+    #fileInput { display: none; }
+
+    .upload-icon {
+      font-size: 2.8rem;
+      margin-bottom: 12px;
+      display: block;
+      color: var(--text-muted);
+      transition: transform 0.3s, color 0.3s;
+    }
+
+    .upload-zone:hover .upload-icon {
+      transform: translateY(-4px) scale(1.05);
+      color: #a5b4fc;
+    }
+
+    .upload-text { font-weight: 600; margin-bottom: 4px; }
+    .upload-subtext { font-size: 0.82rem; color: var(--text-muted); }
+
+    #selectedFileDisplay {
+      display: none;
+      margin-top: 16px;
+      padding: 10px 16px;
+      background: rgba(99, 102, 241, 0.1);
+      border: 1px solid rgba(99, 102, 241, 0.25);
+      border-radius: 8px;
+      font-size: 0.9rem;
+      color: #c7d2fe;
+      align-items: center;
+      gap: 8px;
+      justify-content: center;
+    }
+
+    /* ── Buttons ── */
+    .btn {
+      padding: 12px 28px;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 1rem;
+      font-family: var(--font-heading);
+      font-weight: 600;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 12px var(--primary-glow);
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn:hover:not(:disabled) {
+      background: var(--primary-hover);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
+    }
+
+    .btn:disabled {
+      background: #475569;
+      color: #94a3b8;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .btn-green {
+      background: var(--success);
+      box-shadow: 0 4px 12px var(--success-glow);
+    }
+
+    .btn-green:hover:not(:disabled) {
+      background: #059669;
+      box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+    }
+
+    .btn-outline {
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: none;
+    }
+
+    .btn-outline:hover:not(:disabled) {
+      background: rgba(255, 255, 255, 0.05);
+      border-color: #fff;
+      box-shadow: none;
+    }
+
+    /* ── Analysis Grid (two-column layout: main + terminal) ── */
+    .analysis-grid {
+      display: none;
+      grid-template-columns: 1fr 420px;
+      gap: 24px;
+      align-items: start;
+    }
+
+    .analysis-grid.visible {
+      display: grid;
+    }
+
+    /* ── Pipeline Tracker ── */
+    .pipeline-tracker {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 24px;
+    }
+
+    .pipeline-step {
+      flex: 1;
+      text-align: center;
+      padding: 16px 8px;
+      background: rgba(255, 255, 255, 0.02);
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      transition: all 0.4s ease;
+    }
+
+    .pipeline-step.active {
+      background: rgba(99, 102, 241, 0.08);
+      border-color: var(--primary);
+      box-shadow: 0 0 16px rgba(99, 102, 241, 0.15);
+    }
+
+    .pipeline-step.completed {
+      background: rgba(16, 185, 129, 0.06);
+      border-color: var(--success);
+    }
+
+    .step-badge {
+      width: 36px;
+      height: 36px;
+      background: rgba(255, 255, 255, 0.08);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 10px auto;
+      border-radius: 50%;
+      font-weight: 700;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      transition: all 0.4s;
+    }
+
+    .pipeline-step.active .step-badge {
+      background: var(--primary);
+      color: #fff;
+      box-shadow: 0 0 12px var(--primary);
+    }
+
+    .pipeline-step.completed .step-badge {
+      background: var(--success);
+      color: #fff;
+    }
+
+    .step-title {
+      font-size: 0.82rem;
+      font-weight: 600;
+      margin-bottom: 4px;
+      color: var(--text-muted);
+      font-family: var(--font-heading);
+      transition: color 0.4s;
+    }
+
+    .pipeline-step.active .step-title,
+    .pipeline-step.completed .step-title {
+      color: var(--text-main);
+    }
+
+    .step-desc {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+    }
+
+    /* ── Progress Bar ── */
+    .progress-wrapper { margin-top: 28px; }
+
+    .progress-info {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      font-size: 0.9rem;
+      color: var(--text-muted);
+    }
+
+    .progress-bar-container {
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 8px;
+      height: 12px;
+      overflow: hidden;
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #6366f1, #a5b4fc, #d946ef);
+      width: 0%;
+      transition: width 0.5s ease;
+      box-shadow: 0 0 10px rgba(99, 102, 241, 0.8);
+    }
+
+    /* ── Terminal Panel ── */
+    .terminal-card {
+      background: rgba(5, 3, 18, 0.85);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(99, 102, 241, 0.2);
+      border-radius: 20px;
+      padding: 0;
+      overflow: hidden;
+      box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(99,102,241,0.1);
+      position: sticky;
+      top: 24px;
+    }
+
+    .terminal-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 20px;
+      background: rgba(99, 102, 241, 0.08);
+      border-bottom: 1px solid rgba(99, 102, 241, 0.2);
+    }
+
+    .terminal-dots {
+      display: flex;
+      gap: 6px;
+    }
+
+    .terminal-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+
+    .dot-red   { background: #ef4444; }
+    .dot-yellow { background: #f59e0b; }
+    .dot-green { background: #10b981; }
+
+    .terminal-title {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: #a5b4fc;
+      font-weight: 500;
+      flex: 1;
+      text-align: center;
+    }
+
+    .terminal-status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #374151;
+      transition: background 0.3s;
+    }
+
+    .terminal-status-dot.active {
+      background: #10b981;
+      box-shadow: 0 0 6px #10b981;
+      animation: pulse-dot 1.5s infinite;
+    }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    #terminalOutput {
+      height: 480px;
+      overflow-y: auto;
+      padding: 16px 20px;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      line-height: 1.8;
+      color: #94a3b8;
+      scroll-behavior: smooth;
+    }
+
+    #terminalOutput::-webkit-scrollbar { width: 4px; }
+    #terminalOutput::-webkit-scrollbar-track { background: transparent; }
+    #terminalOutput::-webkit-scrollbar-thumb { background: rgba(99,102,241,0.3); border-radius: 4px; }
+
+    .log-line { display: flex; gap: 8px; margin-bottom: 2px; }
+    .log-time { color: #4b5563; flex-shrink: 0; }
+    .log-prefix { flex-shrink: 0; }
+    .log-msg { color: #e2e8f0; word-break: break-all; }
+
+    .log-info .log-prefix  { color: #6366f1; }
+    .log-success .log-prefix { color: #10b981; }
+    .log-warn .log-prefix  { color: #f59e0b; }
+    .log-error .log-prefix { color: #ef4444; }
+    .log-error .log-msg    { color: #fca5a5; }
+    .log-agent .log-prefix { color: #d946ef; }
+    .log-agent .log-msg    { color: #f0abfc; }
+
+    .terminal-footer {
+      padding: 10px 20px;
+      border-top: 1px solid rgba(255,255,255,0.05);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: #4b5563;
+    }
+
+    .terminal-prompt { color: #6366f1; }
+    .terminal-cursor {
+      display: inline-block;
+      width: 8px;
+      height: 14px;
+      background: #6366f1;
+      animation: blink 1s step-end infinite;
+      vertical-align: middle;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+
+    /* ── Error Box ── */
+    #errorBox {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #fca5a5;
+      border-radius: 8px;
+      padding: 16px;
+      margin-top: 16px;
+      display: none;
+      font-size: 0.9rem;
+    }
+
+    /* ── Tabs ── */
+    .tabs-container {
+      margin-top: 32px;
+      display: none;
+    }
+
+    .tab-header {
+      display: flex;
+      gap: 8px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      padding-bottom: 8px;
+      margin-bottom: 24px;
+    }
+
+    .tab-button {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 10px 20px;
+      font-family: var(--font-heading);
+      font-weight: 600;
+      font-size: 1rem;
+      cursor: pointer;
+      border-radius: 8px;
+      transition: all 0.3s;
+    }
+
+    .tab-button.active {
+      color: var(--text-main);
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .tab-button:hover:not(.active) {
+      color: #fff;
+      background: rgba(255,255,255,0.02);
+    }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* ── Tables ── */
+    .table-container {
+      overflow-x: auto;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.05);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88rem;
+      background: rgba(0, 0, 0, 0.15);
+      text-align: left;
+    }
+
+    th {
+      background: rgba(255, 255, 255, 0.03);
+      color: #c7d2fe;
+      padding: 14px 18px;
+      font-weight: 600;
+      font-family: var(--font-heading);
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+
+    td {
+      padding: 14px 18px;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      vertical-align: top;
+      line-height: 1.5;
+    }
+
+    tr:hover td { background: rgba(255, 255, 255, 0.015); }
+
+    /* ── Badges ── */
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+    }
+
+    .badge-yes     { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+    .badge-no      { background: rgba(239, 68, 68, 0.15);  color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+    .badge-partial { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+    .badge-err     { background: rgba(156, 163, 175, 0.15);color: #d1d5db; border: 1px solid rgba(156, 163, 175, 0.3); }
+
+    .model-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin: 4px 4px 0 0;
+      padding: 3px 8px;
+      border-radius: 6px;
+      background: rgba(14, 165, 233, 0.12);
+      border: 1px solid rgba(14, 165, 233, 0.28);
+      color: #7dd3fc;
+      font-size: 0.72rem;
+      font-weight: 700;
+      word-break: break-word;
+    }
+
+    .fallback-chip {
+      background: rgba(245, 158, 11, 0.12);
+      border-color: rgba(245, 158, 11, 0.32);
+      color: #fbbf24;
+    }
+
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+
+    .metric-tile {
+      background: rgba(255,255,255,0.035);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 8px;
+      padding: 14px;
+      min-height: 86px;
+    }
+
+    .metric-label {
+      color: var(--text-muted);
+      font-size: 0.78rem;
+      margin-bottom: 8px;
+    }
+
+    .metric-value {
+      color: #e0e7ff;
+      font-family: var(--font-heading);
+      font-size: 1.45rem;
+      font-weight: 700;
+    }
+
+    .router-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 360px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+
+    .router-event {
+      display: grid;
+      grid-template-columns: 72px 140px 1fr 132px;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.025);
+      border: 1px solid rgba(255,255,255,0.06);
+      font-size: 0.82rem;
+    }
+
+    .router-status {
+      justify-self: end;
+      text-transform: uppercase;
+      font-weight: 800;
+      color: #c7d2fe;
+      font-size: 0.72rem;
+    }
+
+    /* ── Theme Tags ── */
+    .theme-tag {
+      display: inline-block;
+      background: rgba(99, 102, 241, 0.1);
+      border: 1px solid rgba(99, 102, 241, 0.2);
+      color: #c7d2fe;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      margin: 2px;
+    }
+
+    /* ── Report Box ── */
+    .report-box {
+      background: rgba(10, 8, 28, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 32px;
+      font-family: var(--font-body);
+      font-size: 1rem;
+      line-height: 1.7;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 1024px) {
+      .analysis-grid.visible {
+        grid-template-columns: 1fr;
+      }
+      .terminal-card { position: static; }
+      .metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .router-event { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <!-- ══ HEADER ══ -->
+    <header>
+      <h1 class="header-logo">🧬 Med-AgentLab</h1>
+      <p>Dağıtık Yapay Zeka Ajanları ile Asenkron MapReduce Nitel Analiz Sistemi</p>
+      <span class="badge-design">⚡ Multi-Agent · MapReduce · Real-Time</span>
+    </header>
+
+    <div class="top-section">
+      <!-- ══ UPLOAD CARD ══ -->
+      <div class="card" id="uploadCard" style="margin-bottom: 0; display: flex; flex-direction: column; justify-content: space-between;">
+        <div>
+          <div class="card-title">📂 Veri Dosyası Yükle</div>
+          <label for="fileInput" class="upload-zone" id="uploadZone">
+            <span class="upload-icon">📊</span>
+            <div class="upload-text">Excel dosyasını buraya sürükle veya tıkla</div>
+            <div class="upload-subtext">.xlsx · .xls formatları desteklenir · Maks. 50 MB</div>
+          </label>
+          <input type="file" id="fileInput" accept=".xlsx,.xls" onchange="handleFileSelect(this)" />
+          <div id="selectedFileDisplay">📎 <span id="selectedFileName"></span></div>
+          <div id="errorBox">⚠️ <span id="errorMsg"></span></div>
+        </div>
+        <div style="margin-top: 20px; display: flex; gap: 12px; flex-wrap: wrap;">
+          <button class="btn" id="uploadBtn" onclick="startAnalysis()" disabled>
+            🚀 Analizi Başlat
+          </button>
+          <button class="btn btn-outline" onclick="reset()">↺ Sıfırla</button>
+        </div>
+      </div>
+
+      <!-- ══ HISTORY CARD ══ -->
+      <div class="card" id="historyCard" style="margin-bottom: 0; display: flex; flex-direction: column;">
+        <div class="card-title">📜 Geçmiş Analizler</div>
+        <div id="historyList" style="flex: 1; min-height: 180px; max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding-right: 4px;">
+          <p style="color: var(--text-muted); font-size: 0.88rem;">Yükleniyor...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ ANALYSIS GRID (Status + Terminal side by side) ══ -->
+    <div class="analysis-grid" id="analysisGrid">
+
+      <!-- Left: Status + Pipeline + Progress -->
+      <div>
+        <div class="card" id="statusCard">
+          <div class="card-title">⚙️ Analiz Durumu</div>
+          <p id="statusText" style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 4px;">Bekleniyor...</p>
+
+          <!-- Pipeline Steps -->
+          <div class="pipeline-tracker">
+            <div class="pipeline-step" id="step1">
+              <div class="step-badge">1</div>
+              <div class="step-title">Yükleme</div>
+              <div class="step-desc">Excel → Metin</div>
+            </div>
+            <div class="pipeline-step" id="step2">
+              <div class="step-badge">2</div>
+              <div class="step-title">Yerel Gizlilik</div>
+              <div class="step-desc">Ollama + Regex</div>
+            </div>
+            <div class="pipeline-step" id="step3">
+              <div class="step-badge">3</div>
+              <div class="step-title">Tema Haritalama</div>
+              <div class="step-desc">Model Havuzu</div>
+            </div>
+            <div class="pipeline-step" id="step4">
+              <div class="step-badge">4</div>
+              <div class="step-title">Tıbbi Doğrulama</div>
+              <div class="step-desc">PubMed + Havuz</div>
+            </div>
+            <div class="pipeline-step" id="step5">
+              <div class="step-badge">5</div>
+              <div class="step-title">Akademik Sentez</div>
+              <div class="step-desc">Reducer Havuzu</div>
+            </div>
+          </div>
+
+          <!-- Progress Bar -->
+          <div class="progress-wrapper">
+            <div class="progress-info">
+              <span>Genel İlerleme</span>
+              <span id="progressPercent">0%</span>
+            </div>
+            <div class="progress-bar-container">
+              <div class="progress-bar-fill" id="progressBar"></div>
+            </div>
+          </div>
+
+          <!-- Cancel Button -->
+          <div id="cancelBtnWrapper" style="margin-top: 16px; display: none; text-align: right;">
+            <button class="btn" id="cancelJobBtn" onclick="cancelCurrentJob()" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #fca5a5; padding: 8px 16px; font-size: 0.9rem; box-shadow: none;">
+              🛑 Analizi Durdur
+            </button>
+          </div>
+        </div>
+
+        <!-- Results Card -->
+        <div class="card" id="resultsCard" style="display:none;">
+          <div class="card-title">📋 Analiz Sonuçları</div>
+
+          <div class="tab-header">
+            <button class="tab-button active" onclick="switchTab('analysisTab')">🔬 Veri Tablosu</button>
+            <button class="tab-button" onclick="switchTab('chartTab')">📊 Görsel Analiz</button>
+            <button class="tab-button" onclick="switchTab('routerTab')">🧭 Router & Gizlilik</button>
+            <button class="tab-button" onclick="switchTab('reportTab')">📄 Akademik Rapor</button>
+          </div>
+
+          <div class="tab-content active" id="analysisTab">
+            <div class="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Orijinal Metin</th>
+                    <th>PII Temizlenmiş</th>
+                    <th>Temalar</th>
+                    <th>Doğrulama</th>
+                    <th>Gerekçe</th>
+                  </tr>
+                </thead>
+                <tbody id="resultsBody"></tbody>
+              </table>
+            </div>
+            <div style="margin-top: 20px; display: flex; gap: 12px; flex-wrap: wrap;">
+              <button class="btn btn-green" onclick="downloadExcel()">⬇ Excel İndir</button>
+              <button class="btn btn-outline" onclick="downloadReport()">📄 MD Rapor İndir</button>
+              <button class="btn" onclick="downloadDocx()" style="background: #2563eb; box-shadow: 0 4px 12px rgba(37,99,235,0.3); border: none;">📝 Word Raporu İndir</button>
+            </div>
+          </div>
+
+          <div class="tab-content" id="chartTab">
+            <div style="background: rgba(10, 8, 28, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 24px; margin-bottom: 20px;">
+              <h3 style="color: #a5b4fc; font-family: 'Outfit', sans-serif; margin-bottom: 16px; font-size: 1.1rem;">🧬 En Sık Karşılaşılan Klinik Temalar</h3>
+              <div style="position: relative; height: 350px; width: 100%;">
+                <canvas id="themesChart"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <div class="tab-content" id="routerTab">
+            <div class="metrics-grid">
+              <div class="metric-tile">
+                <div class="metric-label">Toplam PII Redaksiyonu</div>
+                <div class="metric-value" id="metricRedactions">0</div>
+              </div>
+              <div class="metric-tile">
+                <div class="metric-label">PII Bulunan Segment</div>
+                <div class="metric-value" id="metricPiiSegments">0</div>
+              </div>
+              <div class="metric-tile">
+                <div class="metric-label">Fallback Kullanımı</div>
+                <div class="metric-value" id="metricFallbacks">0</div>
+              </div>
+              <div class="metric-tile">
+                <div class="metric-label">Rapor Modeli</div>
+                <div class="metric-value" id="metricReportModel" style="font-size:0.92rem; line-height:1.35;">-</div>
+              </div>
+            </div>
+            <div style="background: rgba(10, 8, 28, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 18px;">
+              <h3 style="color: #a5b4fc; font-family: 'Outfit', sans-serif; margin-bottom: 14px; font-size: 1.05rem;">Model Router Olayları</h3>
+              <div class="router-list" id="routerEventsList"></div>
+            </div>
+          </div>
+
+          <div class="tab-content" id="reportTab">
+            <div class="report-box" id="academicReportBox">
+              <p style="color: var(--text-muted);">Rapor yükleniyor...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Live Terminal -->
+      <div class="terminal-card" id="terminalCard">
+        <div class="terminal-header">
+          <div class="terminal-dots">
+            <div class="terminal-dot dot-red"></div>
+            <div class="terminal-dot dot-yellow"></div>
+            <div class="terminal-dot dot-green"></div>
+          </div>
+          <div class="terminal-title">🖥 Ajan Log Terminali</div>
+          <div class="terminal-status-dot" id="terminalStatusDot"></div>
+        </div>
+        <div id="terminalOutput">
+          <div class="log-line log-info">
+            <span class="log-time">--:--:--</span>
+            <span class="log-prefix">[SYS]</span>
+            <span class="log-msg">Terminal hazır. Analiz başlatıldığında ajan logları burada görünecek.</span>
+          </div>
+        </div>
+        <div class="terminal-footer">
+          <span class="terminal-prompt">med-agentlab $</span>
+          <span style="color: #374151;">_</span>
+          <div class="terminal-cursor"></div>
+        </div>
+      </div>
+
+    </div><!-- /.analysis-grid -->
+
+  </div><!-- /.container -->
+
+  <script>
+    const API = 'http://localhost:8000';
+    let currentJobId = null;
+    let pollTimer = null;
+    let renderedLogsCount = 0;
+    let themesChartInstance = null;
+
+    // Load past jobs list on page load
+    document.addEventListener("DOMContentLoaded", () => {
+      loadHistory();
+    });
+
+    /* ── Load Past Jobs History ── */
+    async function loadHistory() {
+      try {
+        const res = await fetch(`${API}/jobs`);
+        const jobsList = await res.json();
+        const historyList = document.getElementById("historyList");
+        
+        if (!jobsList || jobsList.length === 0) {
+          historyList.innerHTML = `<p style="color: var(--text-muted); font-size: 0.85rem; text-align: center; margin-top: 20px;">Henüz geçmiş analiz bulunmuyor.</p>`;
+          return;
+        }
+
+        historyList.innerHTML = "";
+        jobsList.forEach(job => {
+          const date = new Date(job.created_at).toLocaleString('tr-TR', {
+            month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+          });
+          const statusText = job.status === 'done' ? 'Tamamlandı' : (job.status === 'error' ? 'Hata' : (job.status === 'cancelled' ? 'İptal Edildi' : 'Çalışıyor'));
+          const badgeStyle = job.status === 'done' ? 'color: #34d399;' : (job.status === 'error' ? 'color: #f87171;' : (job.status === 'cancelled' ? 'color: #9ca3af;' : 'color: #fbbf24;'));
+          
+          historyList.innerHTML += `
+            <div class="history-item" onclick="loadPastJob('${job.job_id}')">
+              <div class="history-item-title">${escHtml(job.filename || 'İsimsiz Analiz')}</div>
+              <div class="history-item-meta">
+                <span>${date}</span>
+                <span style="${badgeStyle} font-weight: 600;">${statusText}</span>
+              </div>
+            </div>
+          `;
+        });
+      } catch (e) {
+        console.error("Geçmiş yükleme hatası:", e);
+      }
+    }
+
+    /* ── Load Selected Past Job ── */
+    async function loadPastJob(jobId) {
+      clearInterval(pollTimer);
+      hideError();
+      currentJobId = jobId;
+      
+      const grid = document.getElementById('analysisGrid');
+      grid.classList.add('visible');
+      document.getElementById('statusCard').style.display = 'block';
+      document.getElementById('resultsCard').style.display = 'none';
+      document.getElementById('cancelBtnWrapper').style.display = 'none';
+      
+      clearTerminal();
+      renderedLogsCount = 0;
+      setTerminalActive(false);
+
+      try {
+        const res = await fetch(`${API}/status/${jobId}`);
+        const data = await res.json();
+
+        document.getElementById('progressBar').style.width = data.progress + '%';
+        document.getElementById('progressPercent').textContent = data.progress + '%';
+        updateStepsVisuals(data.status, data.progress);
+        
+        const txt = document.getElementById('statusText');
+        
+        // Print historical logs
+        if (data.logs && Array.isArray(data.logs)) {
+          data.logs.forEach(l => {
+            const type = l.is_error ? 'error' : (l.agent !== 'system' ? 'agent' : 'info');
+            logToTerminal(l.message, type);
+          });
+          renderedLogsCount = data.logs.length;
+        }
+
+        if (data.status === 'done') {
+          txt.textContent = `✅ Başarıyla Tamamlandı! ${data.total} klinik veri parçası sentezlendi.`;
+          await loadResults();
+        } else if (data.status === 'error') {
+          txt.textContent = 'Hata oluştu!';
+          showError(data.error || 'Ajan orkestrasyonunda kritik hata.');
+        } else if (data.status === 'cancelled') {
+          txt.textContent = '🛑 Analiz kullanıcı tarafından iptal edildi.';
+          logToTerminal('Analiz durdurulmuş.', 'warn');
+        } else {
+          txt.textContent = 'Analiz devam ediyor, canlı izlemeye geçiliyor...';
+          document.getElementById('cancelBtnWrapper').style.display = 'block';
+          setTerminalActive(true);
+          pollTimer = setInterval(pollStatus, 2000);
+        }
+      } catch (e) {
+        showError("İş yükleme hatası: " + e.message);
+      }
+    }
+
+    /* ── File Selection ── */
+    function handleFileSelect(input) {
+      const file = input.files[0];
+      if (!file) return;
+      document.getElementById('selectedFileName').textContent = file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)';
+      document.getElementById('selectedFileDisplay').style.display = 'flex';
+      document.getElementById('uploadBtn').disabled = false;
+      hideError();
+    }
+
+    /* ── Error helpers ── */
+    function showError(msg) {
+      const box = document.getElementById('errorBox');
+      document.getElementById('errorMsg').textContent = msg;
+      box.style.display = 'block';
+    }
+
+    function hideError() {
+      document.getElementById('errorBox').style.display = 'none';
+    }
+
+    /* ── Terminal Logger ── */
+    function logToTerminal(message, type = 'info') {
+      const output = document.getElementById('terminalOutput');
+      const now = new Date();
+      const time = now.toTimeString().slice(0, 8);
+
+      const prefixMap = {
+        info:    '[INFO]',
+        success: '[OK  ]',
+        warn:    '[WARN]',
+        error:   '[ERR ]',
+        agent:   '[AJAN]',
+      };
+
+      const line = document.createElement('div');
+      line.className = 'log-line log-' + type;
+      line.innerHTML =
+        '<span class="log-time">' + time + '</span>' +
+        '<span class="log-prefix">' + (prefixMap[type] || '[INFO]') + '</span>' +
+        '<span class="log-msg">' + escHtml(message) + '</span>';
+
+      output.appendChild(line);
+      output.scrollTop = output.scrollHeight;
+    }
+
+    /* ── Cancel Current Job ── */
+    async function cancelCurrentJob() {
+      if (!currentJobId) return;
+      const btn = document.getElementById('cancelJobBtn');
+      btn.disabled = true;
+      btn.textContent = '🛑 Durduruluyor...';
+      try {
+        const res = await fetch(`${API}/cancel/${currentJobId}`, { method: 'POST' });
+        if (res.ok) {
+          logToTerminal('İptal isteği gönderildi. Ajanlar kapatılıyor...', 'warn');
+        } else {
+          showError('İptal işlemi sırasında hata oluştu.');
+        }
+      } catch (e) {
+        logToTerminal('İptal hatası: ' + e.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '🛑 Analizi Durdur';
+      }
+    }
+
+    function clearTerminal() {
+      document.getElementById('terminalOutput').innerHTML = '';
+    }
+
+    function setTerminalActive(active) {
+      const dot = document.getElementById('terminalStatusDot');
+      if (active) dot.classList.add('active');
+      else dot.classList.remove('active');
+    }
+
+    /* ── Pipeline Step Visuals ── */
+    function updateStepsVisuals(status, progress) {
+      document.querySelectorAll('.pipeline-step').forEach(step => {
+        step.className = 'pipeline-step';
+      });
+
+      const s = [
+        document.getElementById('step1'),
+        document.getElementById('step2'),
+        document.getElementById('step3'),
+        document.getElementById('step4'),
+        document.getElementById('step5'),
+      ];
+
+      if (status === 'queued') {
+        s[0].classList.add('active');
+      } else if (status === 'running') {
+        s[0].className = 'pipeline-step completed';
+        s[1].classList.add('active');
+        if (progress > 25) { s[1].className = 'pipeline-step completed'; s[2].classList.add('active'); }
+        if (progress > 55) { s[2].className = 'pipeline-step completed'; s[3].classList.add('active'); }
+      } else if (status === 'reducing') {
+        s[0].className = s[1].className = s[2].className = s[3].className = 'pipeline-step completed';
+        s[4].classList.add('active');
+      } else if (status === 'done') {
+        s.forEach(el => { el.className = 'pipeline-step completed'; });
+      } else if (status === 'cancelled') {
+        // Clear all states
+      }
+    }
+
+    /* ── Start Analysis ── */
+    async function startAnalysis() {
+      hideError();
+      const file = document.getElementById('fileInput').files[0];
+      if (!file) { showError('Lütfen analiz için bir dosya seçin.'); return; }
+
+      const btn = document.getElementById('uploadBtn');
+      btn.disabled = true;
+
+      // Show the analysis grid
+      const grid = document.getElementById('analysisGrid');
+      grid.classList.add('visible');
+      document.getElementById('statusCard').style.display = 'block';
+      document.getElementById('resultsCard').style.display = 'none';
+      document.getElementById('cancelBtnWrapper').style.display = 'block';
+
+      clearTerminal();
+      renderedLogsCount = 0;
+      setTerminalActive(true);
+      logToTerminal('Dosya yükleniyor: ' + file.name, 'info');
+      logToTerminal('Backend bağlantısı kuruluyor → ' + API, 'info');
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      try {
+        const res = await fetch(`${API}/upload`, { method: 'POST', body: formData });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || 'Upload hatası oluştu.');
+        }
+        const data = await res.json();
+        currentJobId = data.job_id;
+        logToTerminal('Dosya kabul edildi. Job ID: ' + currentJobId, 'success');
+        logToTerminal('Ajan orkestrasyonu başlatılıyor...', 'agent');
+
+        loadHistory(); // Refresh history list
+        pollTimer = setInterval(pollStatus, 2000);
+      } catch (e) {
+        showError(e.message);
+        logToTerminal('HATA: ' + e.message, 'error');
+        btn.disabled = false;
+        setTerminalActive(false);
+        document.getElementById('cancelBtnWrapper').style.display = 'none';
+      }
+    }
+
+    /* ── Poll Status ── */
+    let lastStatus = null;
+
+    async function pollStatus() {
+      if (!currentJobId) return;
+      try {
+        const res = await fetch(`${API}/status/${currentJobId}`);
+        const data = await res.json();
+
+        // Progress bar
+        document.getElementById('progressBar').style.width = data.progress + '%';
+        document.getElementById('progressPercent').textContent = data.progress + '%';
+
+        // Pipeline visuals
+        updateStepsVisuals(data.status, data.progress);
+
+        const txt = document.getElementById('statusText');
+
+        // Log only on status change
+        if (data.status !== lastStatus) {
+          lastStatus = data.status;
+          if (data.status === 'queued') {
+            txt.textContent = 'Analiz sıraya alındı, ajanlar uyandırılıyor...';
+            logToTerminal('Durum: QUEUED — Orkestrasyon kuyruğu hazırlanıyor', 'info');
+          } else if (data.status === 'running') {
+            logToTerminal('Durum: RUNNING — Ollama gizlilik katmanı ve model havuzları çalışıyor', 'agent');
+          } else if (data.status === 'reducing') {
+            logToTerminal('Durum: REDUCING — Akademik reducer havuzu final raporu sentezliyor', 'agent');
+          }
+        }
+
+        if (data.status === 'running') {
+          txt.textContent = `Aktif: Yerel gizlilik + tema haritalama + PubMed doğrulama | İşlenen: ${data.processed ?? '?'} / ${data.total ?? '?'} segment`;
+        } else if (data.status === 'reducing') {
+          txt.textContent = 'Akademik reducer havuzu doğrulanmış temalardan final raporu sentezliyor...';
+        } else if (data.status === 'done') {
+          clearInterval(pollTimer);
+          setTerminalActive(false);
+          document.getElementById('cancelBtnWrapper').style.display = 'none';
+          txt.textContent = `✅ Başarıyla Tamamlandı! ${data.total} klinik veri parçası sentezlendi.`;
+          logToTerminal('Analiz tamamlandı! Sonuçlar yükleniyor...', 'success');
+          logToTerminal('Toplam işlenen segment: ' + (data.total ?? '?'), 'success');
+          await loadResults();
+          loadHistory(); // Refresh history to show done state
+        } else if (data.status === 'error') {
+          clearInterval(pollTimer);
+          setTerminalActive(false);
+          document.getElementById('cancelBtnWrapper').style.display = 'none';
+          txt.textContent = 'Hata oluştu!';
+          const errMsg = data.error || 'Ajan orkestrasyonunda kritik hata.';
+          showError(errMsg);
+          logToTerminal('KRİTİK HATA: ' + errMsg, 'error');
+          document.getElementById('uploadBtn').disabled = false;
+          loadHistory(); // Refresh history to show error state
+        } else if (data.status === 'cancelled') {
+          clearInterval(pollTimer);
+          setTerminalActive(false);
+          document.getElementById('cancelBtnWrapper').style.display = 'none';
+          txt.textContent = '🛑 Analiz kullanıcı tarafından iptal edildi.';
+          logToTerminal('İşlem iptal edildi.', 'warn');
+          document.getElementById('uploadBtn').disabled = false;
+          loadHistory();
+        }
+
+        // Render new logs without duplication
+        if (data.logs && Array.isArray(data.logs)) {
+          if (data.logs.length > renderedLogsCount) {
+            const newLogs = data.logs.slice(renderedLogsCount);
+            newLogs.forEach(l => {
+              const type = l.is_error ? 'error' : (l.agent !== 'system' ? 'agent' : 'info');
+              logToTerminal(l.message, type);
+            });
+            renderedLogsCount = data.logs.length;
+          }
+        }
+
+      } catch (e) {
+        logToTerminal('Polling hatası: ' + e.message, 'error');
+        console.error('Poller error:', e);
+      }
+    }
+
+    /* ── Helpers ── */
+    function escHtml(str) {
+      return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function highlightRedacted(text) {
+      if (!text) return '';
+      return text.replace(/\[([A-Z_]+_REDACTED)\]/g,
+        '<span style="background:rgba(245,158,11,0.2);color:#fbbf24;border:1px solid rgba(245,158,11,0.4);padding:2px 6px;border-radius:4px;font-weight:500;font-size:0.8rem;">$1</span>'
+      );
+    }
+
+    function formatThemes(themes) {
+      if (!themes || themes === 'ERROR') return '<span class="badge badge-err">HATA</span>';
+      return themes.split(',').map(t => `<span class="theme-tag">${escHtml(t.trim())}</span>`).join(' ');
+    }
+
+    function modelChip(model, fallbackUsed) {
+      if (!model) return '';
+      const cls = fallbackUsed ? 'model-chip fallback-chip' : 'model-chip';
+      const label = fallbackUsed ? 'Fallback' : 'Model';
+      return `<span class="${cls}">${label}: ${escHtml(model)}</span>`;
+    }
+
+    function renderRouterPanel(data) {
+      const privacy = data.privacy_metrics || {};
+      const summary = data.model_summary || {};
+      document.getElementById('metricRedactions').textContent = privacy.total_redactions ?? 0;
+      document.getElementById('metricPiiSegments').textContent = `${privacy.segments_with_redactions ?? 0}/${privacy.total_segments ?? 0}`;
+      document.getElementById('metricFallbacks').textContent = summary.fallback_count ?? 0;
+      document.getElementById('metricReportModel').textContent = data.report_model || summary.report_model || '-';
+
+      const list = document.getElementById('routerEventsList');
+      const events = data.router_events || [];
+      if (!events.length) {
+        list.innerHTML = '<div style="color: var(--text-muted); font-size: 0.9rem;">Bu analiz için router olayı kaydedilmedi.</div>';
+        return;
+      }
+
+      list.innerHTML = events.map(ev => {
+        const status = String(ev.status || '').replace(/_/g, ' ');
+        return `
+          <div class="router-event">
+            <span style="color:#64748b;font-family:var(--font-mono);">${escHtml(ev.time || '--:--:--')}</span>
+            <span style="color:#c7d2fe;font-weight:700;">${escHtml(ev.task || '-')}</span>
+            <span style="color:#e2e8f0;word-break:break-word;">${escHtml(ev.model || '-')}<br><small style="color:#94a3b8;">${escHtml(ev.message || '')}</small></span>
+            <span class="router-status">${escHtml(status)}</span>
+          </div>`;
+      }).join('');
+    }
+
+    function parseMarkdown(md) {
+      if (!md) return '';
+      return md
+        .replace(/^### (.*$)/gim, '<h3 style="margin-top:18px;margin-bottom:8px;color:#a5b4fc;font-family:\'Outfit\',sans-serif;">$1</h3>')
+        .replace(/^## (.*$)/gim,  '<h2 style="margin-top:24px;margin-bottom:12px;color:#c7d2fe;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:6px;font-family:\'Outfit\',sans-serif;">$1</h2>')
+        .replace(/^# (.*$)/gim,   '<h1 style="margin-top:28px;margin-bottom:16px;color:#e0e7ff;font-family:\'Outfit\',sans-serif;">$1</h1>')
+        .replace(/^\* (.*$)/gim,  '<li style="margin-left:20px;margin-bottom:6px;list-style-type:square;color:#e2e8f0;">$1</li>')
+        .replace(/^- (.*$)/gim,   '<li style="margin-left:20px;margin-bottom:6px;list-style-type:square;color:#e2e8f0;">$1</li>')
+        .replace(/\*\*(.*?)\*\*/gim, '<strong style="color:#fff;">$1</strong>')
+        .replace(/\*(.*?)\*/gim,     '<em style="color:#cbd5e1;">$1</em>')
+        .replace(/`([^`]+)`/g,       '<code style="background:rgba(255,255,255,0.1);padding:2px 6px;border-radius:4px;font-family:monospace;color:#fda4af;">$1</code>')
+        .replace(/\n/g, '<br />');
+    }
+
+    /* ── Load Results ── */
+    async function loadResults() {
+      try {
+        const res = await fetch(`${API}/results/${currentJobId}`);
+        const data = await res.json();
+
+        const tbody = document.getElementById('resultsBody');
+        tbody.innerHTML = '';
+
+        data.results.forEach((r, i) => {
+          const val = String(r.validation_result).toUpperCase().trim();
+          const badgeClass = val.includes('YES')     ? 'badge-yes'
+                           : val.includes('NO')      ? 'badge-no'
+                           : val.includes('PARTIAL') ? 'badge-partial' : 'badge-err';
+
+          tbody.innerHTML += `
+            <tr>
+              <td><strong>${i + 1}</strong></td>
+              <td style="color:var(--text-muted);font-size:0.82rem;">${escHtml(r.original_text)}</td>
+              <td>${highlightRedacted(escHtml(r.pii_redacted_text))}</td>
+              <td>${formatThemes(r.mapped_themes)}<br>${modelChip(r.theme_model, r.theme_fallback_used)}</td>
+              <td><span class="badge ${badgeClass}">${escHtml(r.validation_result)}</span><br>${modelChip(r.validation_model, r.validation_fallback_used)}</td>
+              <td style="font-size:0.82rem;color:#cbd5e1;">${escHtml(r.validation_reason)}</td>
+            </tr>`;
+        });
+
+        document.getElementById('academicReportBox').innerHTML = parseMarkdown(data.report);
+        renderRouterPanel(data);
+        document.getElementById('resultsCard').style.display = 'block';
+        logToTerminal('Sonuç tablosu yüklendi (' + data.results.length + ' kayıt)', 'success');
+        
+        // Render themes Chart.js chart
+        renderThemesChart(data.results);
+      } catch(e) {
+        logToTerminal('Sonuçlar yüklenirken hata: ' + e.message, 'error');
+      }
+    }
+
+    /* ── Render Themes Chart.js Chart ── */
+    function renderThemesChart(results) {
+      const themeCounts = {};
+      results.forEach(r => {
+        if (r.mapped_themes && r.mapped_themes !== 'ERROR') {
+          r.mapped_themes.split(',').forEach(theme => {
+            const cleanTheme = theme.trim();
+            if (cleanTheme) {
+              themeCounts[cleanTheme] = (themeCounts[cleanTheme] || 0) + 1;
+            }
+          });
+        }
+      });
+
+      const sortedThemes = Object.entries(themeCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10);
+
+      const labels = sortedThemes.map(x => x[0]);
+      const counts = sortedThemes.map(x => x[1]);
+
+      const ctx = document.getElementById('themesChart').getContext('2d');
+      
+      if (themesChartInstance) {
+        themesChartInstance.destroy();
+      }
+
+      themesChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Tema Sıklığı',
+            data: counts,
+            backgroundColor: 'rgba(99, 102, 241, 0.55)',
+            borderColor: 'rgba(99, 102, 241, 0.95)',
+            borderWidth: 1.5,
+            borderRadius: 6,
+            hoverBackgroundColor: 'rgba(217, 70, 239, 0.7)',
+            hoverBorderColor: 'rgba(217, 70, 239, 0.95)'
+          }]
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false }
+          },
+          scales: {
+            x: {
+              grid: { color: 'rgba(255, 255, 255, 0.05)' },
+              ticks: { color: '#9ca3af', stepSize: 1 }
+            },
+            y: {
+              grid: { display: false },
+              ticks: { color: '#f3f4f6', font: { family: 'Inter', weight: '500' } }
+            }
+          }
+        }
+      });
+    }
+
+    /* ── Tab Switching ── */
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
+      document.getElementById(tabId).classList.add('active');
+      
+      // Update active styling of tab button
+      const btns = document.querySelectorAll('.tab-button');
+      if (tabId === 'analysisTab') btns[0].classList.add('active');
+      else if (tabId === 'chartTab') btns[1].classList.add('active');
+      else if (tabId === 'routerTab') btns[2].classList.add('active');
+      else btns[3].classList.add('active');
+    }
+
+    /* ── Download ── */
+    function downloadExcel() {
+      if (!currentJobId) return;
+      window.location.href = `${API}/download/${currentJobId}`;
+    }
+
+    function downloadReport() {
+      if (!currentJobId) return;
+      window.location.href = `${API}/download/report/${currentJobId}`;
+    }
+
+    function downloadDocx() {
+      if (!currentJobId) return;
+      window.location.href = `${API}/download/report/docx/${currentJobId}`;
+    }
+
+    /* ── Reset ── */
+    function reset() {
+      clearInterval(pollTimer);
+      currentJobId = null;
+      lastStatus = null;
+      renderedLogsCount = 0;
+      document.getElementById('fileInput').value = '';
+      document.getElementById('selectedFileDisplay').style.display = 'none';
+      document.getElementById('uploadBtn').disabled = true;
+      document.getElementById('analysisGrid').classList.remove('visible');
+      document.getElementById('statusCard').style.display = 'none';
+      document.getElementById('resultsCard').style.display = 'none';
+      document.getElementById('cancelBtnWrapper').style.display = 'none';
+      document.getElementById('progressBar').style.width = '0%';
+      document.getElementById('progressPercent').textContent = '0%';
+      document.getElementById('statusText').textContent = 'Bekleniyor...';
+      setTerminalActive(false);
+      clearTerminal();
+      logToTerminal('Sistem sıfırlandı. Yeni analiz için dosya yükleyin.', 'info');
+      hideError();
+    }
+  </script>
+</body>
+</html>

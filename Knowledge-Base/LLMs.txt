@@ -1,0 +1,118 @@
+# MED-AGENTLAB: KNOWLEDGE BASE & SYSTEM ARCHITECTURE
+VERSION: 1.1.0
+DOMAIN: Qualitative Medical Data Analysis, Multi-Agent Systems, MapReduce
+CORE_PHILOSOPHY: Zero-cost, privacy-first, asynchronous execution.
+HARDWARE CONSTRAINT: Limited local hardware (4GB VRAM).
+
+---
+
+## 1. THE THESIS & CORE PHILOSOPHY
+The core engineering contribution of Med-AgentLab is an orchestration layer capable of coordinating a fleet of heterogeneous AI models within an asynchronous MapReduce pipeline under strict local hardware constraints (e.g., 4GB VRAM). 
+
+Inspired by the "DeepSeek Moment", the project operates under the philosophy that "intelligence lies in rational and distributed architectures, not in singular monolithic models." High-standard qualitative medical analysis serves as the benchmark domain to demonstrate the system's capabilities in high privacy, context management, and validation discipline.
+
+---
+
+## 2. SYSTEM WORKFLOW & PIPELINE CONTRACTS
+The framework operates as a 5-layer distributed processing engine, each step bound by strict Input/Output (I/O) contracts:
+
+1. **[STEP 1: INGESTION (DYNAMIC CHUNKING)]**
+   - **Function**: Splits raw patient interviews (PDF/TXT) or Excel data into ~3000-token logical windows with a 450-token (15%) overlap.
+   - **Input**: Raw unstructured clinical text.
+   - **Output**: Overlapping logical text chunks.
+   - **Rationale**: Prevents split-context information loss (false negatives) at chunk boundaries.
+   - **Primary Tech**: Python / `asyncio`.
+
+2. **[STEP 2: PRIVACY GUARD (LOCAL REDACTION)]**
+   - **Function**: Scans text locally to redact Personally Identifiable Information (PII) like names, TC numbers, addresses, and diagnoses before sending data to cloud APIs.
+   - **Input**: Raw text chunks with sensitive data.
+   - **Output**: PII-Redacted text (e.g., replacing names with `[REDACTED_NAME]`).
+   - **Target Metric**: Recall ≥ 0.95 for Turkish medical PII detection.
+   - **Risk Management**: If the local model misses any identifiers, a secondary regex-based "Pattern Guard" layer filters them.
+   - **Primary Tech**: `Ollama` running local models.
+
+3. **[STEP 3: MAP PHASE (TEMATIC EXTRACTION)]**
+   - **Function**: Concurrently processes masked chunks using `asyncio.gather` and LiteLLM to perform thematic coding and open extraction.
+   - **Input**: Masked (redacted) text chunks.
+   - **Output**: Raw semantic codes/themes.
+   - **Primary Tech**: `Groq` Cloud API (optimized with LiteLLM & Tenacity).
+
+4. **[STEP 4: VALIDATION (RAG & VERIFICATION)]**
+   - **Function**: An intelligent auditor that cross-references extracted codes/themes against medical ontologies (MeSH) and databases (PubMed) using a RAG agent.
+   - **Input**: Raw extracted themes.
+   - **Output**: Validated & filtered theme list.
+   - **Decision Rule**: If an AI-extracted symptom or relationship cannot be verified in the medical literature, it is marked as a "Potansiyel Halüsinasyon" (Potential Hallucination) and rejected.
+   - **Primary Tech**: `Gemini 1.5 Flash` (Cloud API).
+
+5. **[STEP 5: REDUCE PHASE (ACADEMIC SYNTHESIS)]**
+   - **Function**: Synthesizes verified themes, resolves duplicates, and builds a hierarchical theme tree (codebook) to write a cohesive Academic Report.
+   - **Input**: Validated themes and codes.
+   - **Output**: Final academic thematic analysis report.
+   - **Primary Tech**: `GPT-4o-mini` or `DeepSeek` (Cloud API).
+
+---
+
+## 3. MODEL ROUTING: TARGET DESIGN VS. CURRENT IMPLEMENTATION
+To maintain zero/low cost and respect hardware constraints, the model routing is defined as follows:
+
+| Pipeline Stage | Target Design Model | Current Implementation Code (`main.py` / `app.py`) | Provider |
+| :--- | :--- | :--- | :--- |
+| **1. Ingestion** | Python / `asyncio` | Python / `asyncio` | Local execution |
+| **2. Privacy Guard** | Ollama (Llama-3-8B) | Ollama (Qwen3:4b / Qwen2.5:3b) | Local Ollama |
+| **3. Map Phase** | Groq (Llama-3-70B) | Groq (Llama-3-8b-8192) | Groq API |
+| **4. Validation** | Gemini 1.5 Flash | Gemini 1.5 Flash | Google Gemini API |
+| **5. Reduce Phase** | GPT-4o-mini / DeepSeek | *Under Design* / Placeholder | Cloud API |
+
+---
+
+## 4. AGENT PERSONAS & SYSTEM PROMPTS
+
+- **AGENT_OLLAMA_PRIVACY**
+  - **Persona**: Strict HIPAA-compliance data scrubber.
+  - **Prompt**: *"You are a strict HIPAA-compliance data scrubber. Return the exact text but replace all names with [REDACTED_NAME]."*
+
+- **AGENT_GROQ_MAPPER (Agent A: Open Coder)**
+  - **Persona**: Qualitative data analyst specializing in open coding.
+  - **Prompt**: *"You are a qualitative data analyst specializing in open coding. Analyze the given text and extract 3-5 key themes or codes that represent the main concepts. Return ONLY a comma-separated list of codes/themes. Be concise and specific."*
+
+- **AGENT_GEMINI_VALIDATOR (Agent B: Axial Coder)**
+  - **Persona**: Qualitative data analyst specializing in axial coding.
+  - **Prompt**: *"You are a qualitative data analyst specializing in axial coding. Given a list of open codes, group them into 2-3 broader parent categories. Return ONLY a comma-separated list of parent categories. Focus on thematic relationships and hierarchical organization."*
+
+- **AGENT_LOCAL_CROSS_VALIDATOR (Agent C: Cross-Validator)**
+  - **Persona**: Local validation assistant.
+  - **Prompt**: *"You are a validation assistant. Check if the category accurately reflects the text. Reply with: YES/NO and one sentence reason. Keep response under 50 words."*
+
+- **AGENT_MASTER_REDUCER**
+  - **Persona**: Lead Academic Researcher.
+  - **Prompt**: *"You are the Lead Academic Researcher. Synthesize these validated qualitative codes into a 1-page Thematic Analysis Report suitable for a medical journal."*
+
+---
+
+## 5. TECHNICAL CONSTRAINTS & RESILIENCE
+- **No Direct API Calls**: All model calls must route through `LiteLLM` for abstraction and easy provider swapping.
+- **Asynchronous Execution**: Blocking synchronous operations in the Map phase are strictly forbidden. The pipeline must use `async def` and `await`.
+- **API Rate Limit Handling**: Rate limit errors (429) from providers like Groq are mitigated using the `Tenacity` library with exponential backoff and `asyncio.semaphore` or batch size pacing.
+- **Observability**: A Streamlit dashboard serves as the main UX interface, providing real-time progress updates, active worker status visualization, and logs.
+
+---
+
+## 6. EVALUATION METRICS
+- **Thematic Recall**: Ratio of AI-extracted themes compared to manual coding by a medical expert (Target: F1-Score ≥ 0.85).
+- **Privacy Precision**: Rate of medical terminology falsely flagged as PII during local redaction (Target: Precision ≥ 0.90).
+- **Cost-Effectiveness**: Savings achieved relative to running the entire dataset through a single monolithic GPT-4 call (Target: ≥ 70% cost reduction).
+
+---
+
+## 7. SDLC ROADMAP & STATUS
+- **Phase 1: Infrastructure** -> asyncio & LiteLLM-based MapReduce engine execution. *(Completed in prototype code)*
+- **Phase 2: Security** -> Local PII redaction & Turkish medical benchmark. *(In Progress / Under Design)*
+- **Phase 3: Validation** -> Tıbbi teyit RAG pipeline & MeSH/PubMed database integration. *(In Progress)*
+- **Phase 4: Observability** -> Streamlit dashboard integration for tracking worker progress. *(Completed/Under Integration)*
+
+---
+
+## 8. IMPORTANT DISCLAIMER / ÖNEMLİ NOT
+> **TR**: Bu belgede ve projede bahsedilen mimari, özellikler ve sistem kurguları şu anda tamamen fikir, planlama ve tasarım (SDLC - Plan/Design) aşamasındadır. Kodlama ve uygulama süreçleri Stitch prototip onayından sonra tamamen hayata geçecektir.
+>
+> **EN**: All architectures, features, and system designs mentioned in this document are currently strictly in the ideation, planning, and design phase. Development and implementation are running as interactive prototypes.

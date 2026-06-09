@@ -1,0 +1,25 @@
+# Core dependencies for Zero-Cost Multi-Agent Qualitative Data Analysis Pipeline
+
+# Data processing
+pandas>=2.0.0
+openpyxl>3.1.0
+PyPDF2>3.0.0
+python-docx>=1.1.0
+
+# Async and API management
+asyncio
+litellm>=1.0.0
+
+# Retry mechanisms for rate limiting
+tenacity>=8.2.0
+
+# Environment variable management
+python-dotenv>=1.0.0
+
+# Web framework (backend API)
+fastapi>=0.110.0
+uvicorn>=0.29.0
+python-multipart>=0.0.9
+
+# Logging (built-in)
+# logging - no installation needed

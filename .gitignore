@@ -1,0 +1,42 @@
+# Environment and local secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Runtime data
+uploads/
+outputs/
+*.db
+*.sqlite
+*.sqlite3
+*.log
+
+# Demo or patient-like spreadsheet data
+demo_klinik_gorusmeler.xlsx
+*.xls
+*.xlsx
+!Knowledge-Base/*.docx
+
+# Generated report assets
+report_assets/
+report_render/
+Med-AgentLab_Bitirme_Projesi_Final_Rapor.docx
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
