@@ -26,6 +26,48 @@ This file tracks the current and future repository-level work needed to keep Med
 - Record future feature changes in `docs/CHANGELOG.md`.
 - Keep `docs/knowledge-base/final-knowledge-base.md` synchronized with the final code behavior.
 
+## Priority: Critical V2 Research Ideas
+
+These items are not part of the current delivered prototype, but they are high-priority ideas from instructor feedback and should be considered first in the next development phase.
+
+### Theme Extraction MCP Server
+
+- Design a local MCP server for theme extraction.
+- Move Agent B's theme extraction responsibility behind an MCP tool boundary.
+- Start with an `extract_themes(text, domain="clinical")` tool.
+- Return structured JSON including themes, evidence snippets and confidence scores.
+- Add optional codebook resources such as `codebook://clinical-themes`.
+- Keep the MCP server local by default because clinical text may contain sensitive information.
+- If MCP fails, preserve the current model-pool and demo-safe fallback behavior.
+
+### Live Interview Assistant Page
+
+- Add a separate "Live Interview Assistant" page instead of mixing this flow into the existing file-upload analysis screen.
+- Allow the clinician/researcher to start a microphone-based interview session.
+- Convert speech to live transcript through a speech-to-text layer.
+- Analyze the temporary transcript in small chunks while the interview continues.
+- Show potential themes/symptom clues as supportive signals, not as diagnosis or clinical decision output.
+- Suggest follow-up questions such as missing symptom duration, severity, frequency or functional impact.
+- Keep the live transcript temporary unless the user explicitly chooses "Save and Send to Analysis".
+- If saved, pass the final transcript into the existing Agent A -> Agent B -> Agent C -> Agent D pipeline.
+
+### Consent, Safety and Human Review Controls
+
+- Add a mandatory disclaimer and checkbox before microphone capture starts.
+- State clearly that the system is not a clinical decision support system.
+- State clearly that transcription errors may occur.
+- Require user confirmation that required consent/information processes are handled outside the application.
+- Add a "review transcript before analysis" step before saving a live interview.
+- Position suggestions as interview support only: "consider asking" rather than "diagnose" or "treat".
+
+### Follow-Up Question Agent
+
+- Research a new Agent E / Interview Assistant role.
+- Input: current transcript, provisional themes and missing information.
+- Output: 2-3 follow-up question suggestions for the interviewer.
+- Keep questions neutral, non-diagnostic and human-reviewable.
+- Consider exposing this feature as an MCP tool: `suggest_followup_questions(transcript, themes)`.
+
 ## Short-Term Engineering Tasks
 
 - Add automated smoke tests for `/health`, `/upload`, `/status/{job_id}` and download endpoints.
